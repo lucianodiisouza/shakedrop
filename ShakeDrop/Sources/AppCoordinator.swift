@@ -24,6 +24,45 @@
 
 import AppKit
 
+// MARK: - File logger
+//
+// NSLog is effectively invisible on recent macOS (messages are
+// redacted / not surfaced by `log` for third-party apps), which
+// makes this app impossible to debug. So we ALSO append to a plain
+// text file inside the app's sandbox container, which can be read
+// from a normal shell:
+//
+//   ~/Library/Containers/com.shakedrop.app/Data/Library/Caches/shakedrop.log
+//
+// `slog` is a top-level function so every file in the target can
+// call it without ceremony.
+private let _slogURL: URL? = {
+    let fm = FileManager.default
+    guard let dir = fm.urls(for: .cachesDirectory, in: .userDomainMask).first
+    else { return nil }
+    return dir.appendingPathComponent("shakedrop.log")
+}()
+
+private let _slogFormatter: DateFormatter = {
+    let f = DateFormatter()
+    f.dateFormat = "HH:mm:ss.SSS"
+    return f
+}()
+
+func slog(_ message: String) {
+    NSLog("[ShakeDrop] \(message)")
+    guard let url = _slogURL else { return }
+    let line = "\(_slogFormatter.string(from: Date()))  \(message)\n"
+    guard let data = line.data(using: .utf8) else { return }
+    if let handle = try? FileHandle(forWritingTo: url) {
+        defer { try? handle.close() }
+        _ = try? handle.seekToEnd()
+        try? handle.write(contentsOf: data)
+    } else {
+        try? data.write(to: url, options: .atomic)
+    }
+}
+
 @MainActor
 final class AppCoordinator {
 
