@@ -5,33 +5,42 @@
 //  Wires together the global ShakeMonitor, the floating
 //  DropTargetWindow, and the AirDropSender.
 //
-//  Behaviour:
-//   - On launch, tries to start the global mouse monitor
-//     immediately. If Input Monitoring is already granted,
-//     the shake gesture is live within milliseconds.
-//   - If the permission isn't granted yet, shows a one-time
-//     alert explaining how to grant it, and polls once a
-//     second until the user does — at which point the
-//     monitor starts automatically. No user action required
-//     after they flip the toggle in System Settings.
-//   - On shake: presents the drop window near the cursor.
-//   - On drop: dismisses the window and opens AirDrop.
+//  Lifecycle:
+//   - `bootstrap()` is called from AppDelegate.init (before
+//     SwiftUI has realized any scene). It starts the monitor
+//     if Input Monitoring is already granted, or shows the
+//     one-time prompt and starts polling.
+//   - `applicationDidFinishLaunching()` is a no-op today but
+//     is the right place for any work that needs the full
+//     app to be running.
+//   - `applicationWillTerminate()` stops the monitor and the
+//     permission poll.
+//
+//  Logging uses NSLog so messages show up in Console.app
+//  without needing any filter — `os.Logger` is more elegant
+//  but its messages can be hidden by macOS' default Console
+//  verbosity, and we've been burned by "no logs" before.
 //
 
 import AppKit
-import os.log
-
-private let log = Logger(subsystem: "com.shakedrop.app", category: "AppCoordinator")
 
 @MainActor
 final class AppCoordinator {
+
+    /// Singleton. SwiftUI's `App.init` needs to bootstrap
+    /// the coordinator before any scene is realized, and
+    /// `App.body` is recomputed — a held property on `App`
+    /// would be re-created on each recompute. A singleton
+    /// guarantees a single instance for the process lifetime.
+    static let shared = AppCoordinator()
 
     private let monitor = ShakeMonitor()
     private let dropWindow = DropTargetWindow()
     private var didShowInitialPermissionPrompt = false
     private var permissionPollTask: Task<Void, Never>?
+    private var didBootstrap = false
 
-    init() {
+    private init() {
         monitor.onShake = { [weak self] location in
             self?.handleShake(at: location)
         }
@@ -42,15 +51,30 @@ final class AppCoordinator {
 
     // MARK: Lifecycle
 
-    /// Called from `applicationDidFinishLaunching` in AppDelegate.
-    func applicationDidFinishLaunching() {
-        log.info("launched; current Input Monitoring state: \(ShakeMonitor.isInputMonitoringAuthorized())")
+    /// Earliest hook. Called from `App.init` so we run before
+    /// SwiftUI has a chance to defer anything. Idempotent —
+    /// calling it multiple times is a no-op after the first.
+    @discardableResult
+    func bootstrap() -> Bool {
+        NSLog("[ShakeDrop] bootstrap; Input Monitoring authorized = \(ShakeMonitor.isInputMonitoringAuthorized())")
+        if didBootstrap { return true }
+        didBootstrap = true
+        attemptStart()
+        return didBootstrap
+    }
+
+    /// Try to start the monitor. If permission isn't granted,
+    /// shows a one-shot prompt and starts a 1Hz poll that
+    /// starts the monitor the moment the user grants access.
+    private func attemptStart() {
         if monitor.start() {
+            NSLog("[ShakeDrop] monitor started")
+            // If we were polling, stop.
+            permissionPollTask?.cancel()
+            permissionPollTask = nil
             return
         }
-        // Permission not granted yet. Show the prompt and
-        // start a background poll that starts the monitor
-        // the moment the user grants access.
+        NSLog("[ShakeDrop] monitor not started; permission likely missing")
         showPermissionPromptIfNeeded()
         startPermissionPoll()
     }
@@ -82,19 +106,17 @@ final class AppCoordinator {
         }
     }
 
-    /// Poll the Input Monitoring permission once per second.
-    /// When the user grants it, start the monitor and stop
-    /// polling. Cheap, runs on the main actor, and self-
-    /// terminates on success.
     private func startPermissionPoll() {
         permissionPollTask?.cancel()
         permissionPollTask = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
                 guard let self else { return }
+                NSLog("[ShakeDrop] poll: checking Input Monitoring…")
                 if ShakeMonitor.isInputMonitoringAuthorized() {
-                    log.info("permission granted; starting monitor")
+                    NSLog("[ShakeDrop] poll: permission now granted")
                     if self.monitor.start() {
+                        NSLog("[ShakeDrop] poll: monitor started")
                         self.permissionPollTask?.cancel()
                         self.permissionPollTask = nil
                         return
@@ -107,12 +129,12 @@ final class AppCoordinator {
     // MARK: Shake / drop handling
 
     private func handleShake(at location: NSPoint) {
-        log.info("presenting drop window at (\(location.x), \(location.y))")
+        NSLog("[ShakeDrop] shake at (\(location.x), \(location.y))")
         dropWindow.present(near: location)
     }
 
     private func handleFileDropped(_ url: URL) {
-        log.info("file dropped: \(url.lastPathComponent)")
+        NSLog("[ShakeDrop] file dropped: \(url.lastPathComponent)")
         AirDropSender.send(url: url) { _ in
             // Best-effort; NSSharingService doesn't expose
             // success/cancel granularly through this API.

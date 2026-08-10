@@ -9,16 +9,18 @@
 //
 
 import SwiftUI
+import AppKit
 
 @main
 struct ShakeDropApp: App {
-    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+
+    init() {
+        NSLog("[ShakeDrop] App.init — bootstrapping coordinator")
+        _ = AppCoordinator.shared.bootstrap()
+    }
 
     var body: some Scene {
         MenuBarExtra {
-            // About pulls the version straight from the app
-            // bundle's Info.plist, so it tracks whatever we
-            // tag without having to hardcode anything here.
             Button("About ShakeDrop") {
                 NSApplication.shared.orderFrontStandardAboutPanel(nil)
             }
@@ -31,14 +33,5 @@ struct ShakeDropApp: App {
             Image(systemName: "hand.draw")
         }
         .menuBarExtraStyle(.menu)
-    }
-}
-
-@MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate {
-    let coordinator = AppCoordinator()
-
-    func applicationDidFinishLaunching(_ notification: Notification) {
-        coordinator.applicationDidFinishLaunching()
     }
 }
