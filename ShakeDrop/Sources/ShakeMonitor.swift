@@ -20,9 +20,8 @@
 import AppKit
 import CoreGraphics
 import ApplicationServices
-import os.log
 
-private let log = Logger(subsystem: "com.shakedrop.app", category: "ShakeMonitor")
+// NSLog so messages show in Console.app without any filter.
 
 @MainActor
 final class ShakeMonitor {
@@ -95,7 +94,7 @@ final class ShakeMonitor {
         // Pre-flight: re-check the permission, since it may
         // have changed since the app launched.
         guard Self.isInputMonitoringAuthorized() else {
-            log.warning("Input Monitoring not authorized; tap not installed")
+            NSLog("Input Monitoring not authorized; tap not installed")
             return false
         }
 
@@ -136,7 +135,7 @@ final class ShakeMonitor {
             callback: callback,
             userInfo: opaqueSelf
         ) else {
-            log.error("CGEvent.tapCreate returned nil; Input Monitoring may not be granted")
+            NSLog("CGEvent.tapCreate returned nil; Input Monitoring may not be granted")
             return false
         }
 
@@ -151,7 +150,7 @@ final class ShakeMonitor {
         self.runLoopSource = src
         CGEvent.tapEnable(tap: tap, enable: true)
         isStarted = true
-        log.info("Shake monitor started; waiting for mouse events")
+        NSLog("Shake monitor started; waiting for mouse events")
         return true
     }
 
@@ -224,7 +223,7 @@ final class ShakeMonitor {
 
         if flips >= minReversals && totalTravel >= minTotalTravel {
             hasFired = true
-            log.info("shake detected: flips=\(flips) travel=\(totalTravel) loc=(\(currentLocation.x), \(currentLocation.y))")
+            NSLog("shake detected: flips=\(flips) travel=\(totalTravel) loc=(\(currentLocation.x), \(currentLocation.y))")
             onShake?(currentLocation)
         }
     }
