@@ -84,12 +84,19 @@ final class DropTargetWindow: NSPanel {
         self.orderFrontRegardless()
 
         // Auto-dismiss if the user doesn't drop anything.
+        // DropTargetWindow is @MainActor; the timer fires on
+        // the main run loop, so we can call dismiss() directly.
         dismissTimer?.invalidate()
         dismissTimer = Timer.scheduledTimer(
             withTimeInterval: Self.dismissAfter,
             repeats: false
         ) { [weak self] _ in
-            Task { @MainActor in self?.dismiss() }
+            // The timer is created on the main run loop (Timer
+            // default), so it's safe to call a @MainActor method
+            // from its callback.
+            MainActor.assumeIsolated {
+                self?.dismiss()
+            }
         }
     }
 
