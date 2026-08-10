@@ -6,5 +6,11 @@
     <true/>
     <key>com.apple.security.files.user-selected.read-only</key>
     <true/>
+    <!-- Required for CGEventTap (global mouse monitoring).
+         The user must grant access in
+         System Settings > Privacy & Security > Input Monitoring
+         the first time the app is run. -->
+    <key>com.apple.security.input-monitoring.client</key>
+    <true/>
 </dict>
 </plist>
