@@ -8,23 +8,23 @@
 
 /* Begin PBXBuildFile section */
 		A1000001 /* ShakeDropApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000001 /* ShakeDropApp.swift */; };
-		A1000002 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000002 /* ContentView.swift */; };
-		A1000003 /* DropZoneView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000003 /* DropZoneView.swift */; };
-		A1000004 /* ShakeDetectorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000004 /* ShakeDetectorView.swift */; };
 		A1000005 /* AirDropSender.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000005 /* AirDropSender.swift */; };
 		A1000006 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B1000006 /* Assets.xcassets */; };
+		A1000010 /* ShakeMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000010 /* ShakeMonitor.swift */; };
+		A1000011 /* DropTargetWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000011 /* DropTargetWindow.swift */; };
+		A1000012 /* AppCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000012 /* AppCoordinator.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		B1000001 /* ShakeDropApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShakeDropApp.swift; sourceTree = "<group>"; };
-		B1000002 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
-		B1000003 /* DropZoneView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DropZoneView.swift; sourceTree = "<group>"; };
-		B1000004 /* ShakeDetectorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShakeDetectorView.swift; sourceTree = "<group>"; };
 		B1000005 /* AirDropSender.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AirDropSender.swift; sourceTree = "<group>"; };
 		B1000006 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		B1000007 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		B1000008 /* ShakeDrop.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ShakeDrop.entitlements; sourceTree = "<group>"; };
 		B1000009 /* ShakeDrop.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ShakeDrop.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		B1000010 /* ShakeMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShakeMonitor.swift; sourceTree = "<group>"; };
+		B1000011 /* DropTargetWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DropTargetWindow.swift; sourceTree = "<group>"; };
+		B1000012 /* AppCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppCoordinator.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -67,9 +67,9 @@
 			isa = PBXGroup;
 			children = (
 				B1000001 /* ShakeDropApp.swift */,
-				B1000002 /* ContentView.swift */,
-				B1000003 /* DropZoneView.swift */,
-				B1000004 /* ShakeDetectorView.swift */,
+				B1000012 /* AppCoordinator.swift */,
+				B1000010 /* ShakeMonitor.swift */,
+				B1000011 /* DropTargetWindow.swift */,
 				B1000005 /* AirDropSender.swift */,
 			);
 			path = Sources;
@@ -155,9 +155,9 @@
 			buildActionMask = 2147483647;
 			files = (
 				A1000001 /* ShakeDropApp.swift in Sources */,
-				A1000002 /* ContentView.swift in Sources */,
-				A1000003 /* DropZoneView.swift in Sources */,
-				A1000004 /* ShakeDetectorView.swift in Sources */,
+				A1000012 /* AppCoordinator.swift in Sources */,
+				A1000010 /* ShakeMonitor.swift in Sources */,
+				A1000011 /* DropTargetWindow.swift in Sources */,
 				A1000005 /* AirDropSender.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
