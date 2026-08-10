@@ -12,11 +12,22 @@ enum AirDropSender {
     /// on the main thread when the user dismisses the sheet.
     static func send(url: URL, completion: @escaping (Bool) -> Void) {
         let items: [Any] = [url]
-        guard let service = NSSharingService(named: NSSharingService.Name("AirDrop")),
-              service.canPerform(withItems: items) else {
+        // Use the real predefined constant. The previous code passed a
+        // made-up name string ("AirDrop"), which matches no registered
+        // service, so the initializer returned nil and nothing was ever
+        // shared. `.sendViaAirDrop` (raw value "com.apple.share.AirDrop.send")
+        // is the actual AirDrop service.
+        guard let service = NSSharingService(named: .sendViaAirDrop) else {
+            slog("AirDrop: NSSharingService(named:.sendViaAirDrop) is nil")
             completion(false)
             return
         }
+        guard service.canPerform(withItems: items) else {
+            slog("AirDrop: canPerform=false for \(url.path) (sandbox may lack access to this file)")
+            completion(false)
+            return
+        }
+        slog("AirDrop: performing share sheet for \(url.lastPathComponent)")
 
         // `perform(withItems:)` is the documented entry point. The
         // share sheet is presented asynchronously; we report "done"
