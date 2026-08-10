@@ -1,0 +1,138 @@
+name: build-and-release
+
+on:
+  # Sanity build on every push and PR.
+  push:
+    branches: [main]
+    tags: ['v[0-9]+.[0-9]+.[0-9]+']
+  pull_request:
+    branches: [main]
+
+  # Allow manual dispatch (builds a snapshot, no release).
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build (${{ matrix.configuration }})
+    runs-on: macos-14
+    strategy:
+      fail-fast: false
+      matrix:
+        configuration: [Debug, Release]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: Build (unsigned, ad-hoc)
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project ShakeDrop.xcodeproj \
+            -scheme ShakeDrop \
+            -configuration "${{ matrix.configuration }}" \
+            -destination 'platform=macOS' \
+            -derivedDataPath build \
+            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Verify the .app exists
+        run: |
+          APP="build/Build/Products/${{ matrix.configuration }}/ShakeDrop.app"
+          if [ ! -d "$APP" ]; then
+            echo "::error::App bundle not found at $APP"
+            exit 1
+          fi
+          ls -la "$APP/Contents/MacOS/"
+
+      - name: Upload .app (artifact)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ShakeDrop-${{ matrix.configuration }}
+          path: build/Build/Products/${{ matrix.configuration }}/ShakeDrop.app
+          if-no-files-found: error
+
+  release:
+    name: Publish release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: macos-14
+    permissions:
+      contents: write   # required to create the GitHub Release
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set version from tag
+        id: version
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Building release $VERSION"
+
+      - name: Build Release
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project ShakeDrop.xcodeproj \
+            -scheme ShakeDrop \
+            -configuration Release \
+            -destination 'platform=macOS' \
+            -derivedDataPath build \
+            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Package .app into a zip
+        run: |
+          APP="build/Build/Products/Release/ShakeDrop.app"
+          VERSION="${{ steps.version.outputs.version }}"
+          OUT="ShakeDrop-${VERSION}.app.zip"
+          # ditto preserves resource forks / extended attributes, important
+          # for macOS bundles.
+          ditto -c -k --sequesterRsrc --keepParent "$APP" "$OUT"
+          ls -la "$OUT"
+
+      - name: Upload .app.zip as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ShakeDrop-${{ steps.version.outputs.version }}-app
+          path: ShakeDrop-${{ steps.version.outputs.version }}.app.zip
+          if-no-files-found: error
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ShakeDrop ${{ steps.version.outputs.version }}
+          tag_name: ${{ github.ref_name }}
+          generate_release_notes: true
+          files: ShakeDrop-${{ steps.version.outputs.version }}.app.zip
+          body: |
+            ## ShakeDrop ${{ steps.version.outputs.version }}
+
+            Menu-bar AirDrop sender for macOS. Drop a file, shake your mouse,
+            AirDrop opens.
+
+            ### Install
+
+            1. Download `ShakeDrop-${{ steps.version.outputs.version }}.app.zip`
+               from the assets below.
+            2. Unzip it.
+            3. Move `ShakeDrop.app` to `/Applications` (or anywhere you like).
+            4. **First launch only** — this build is unsigned, so macOS will
+               block it. Either:
+               - right-click the app in Finder → **Open** → confirm, or
+               - run `xattr -dr com.apple.quarantine /Applications/ShakeDrop.app`
+                 from Terminal.
+
+            Subsequent launches work normally.
+
+            ### Requirements
+
+            - macOS 13 or later
+            - Xcode 15+ if you want to build from source
