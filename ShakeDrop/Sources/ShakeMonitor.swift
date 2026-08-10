@@ -32,6 +32,11 @@ final class ShakeMonitor {
     /// moment the gesture fired.
     var onShake: ((NSPoint) -> Void)?
 
+    /// Fires on the main thread when the left mouse button is released
+    /// (a drag session ended). The coordinator uses this to dismiss the
+    /// drop window so the next file starts clean.
+    var onDragEnded: (() -> Void)?
+
     // MARK: Tunables
 
     /// Minimum number of direction reversals (in X **or** Y —
@@ -126,7 +131,22 @@ final class ShakeMonitor {
             return false
         }
 
-        let eventMask: CGEventMask = 1 << CGEventType.mouseMoved.rawValue
+        // CRITICAL: while the user is holding a file (a drag session),
+        // macOS emits `leftMouseDragged` events, NOT `mouseMoved`. The
+        // whole point of this app is to detect a shake *while a file is
+        // held*, so we must watch the dragged events — otherwise the tap
+        // receives nothing during the one gesture that matters. We keep
+        // `mouseMoved` too so the detector still works for free-hand
+        // testing, and add the right-button drag for completeness.
+        // We also watch leftMouseUp so we know when a drag session
+        // ends — that's our cue to dismiss the drop window and re-arm
+        // the detector, so the *next* file gets a fresh drop target
+        // instead of a stale one stuck at the previous location.
+        let eventMask: CGEventMask =
+            (1 << CGEventType.mouseMoved.rawValue) |
+            (1 << CGEventType.leftMouseDragged.rawValue) |
+            (1 << CGEventType.rightMouseDragged.rawValue) |
+            (1 << CGEventType.leftMouseUp.rawValue)
 
         // The callback runs on whatever run loop the tap is
         // attached to. We attach to the main run loop below.
@@ -148,8 +168,21 @@ final class ShakeMonitor {
                 let monitor = Unmanaged<ShakeMonitor>
                     .fromOpaque(userInfo)
                     .takeUnretainedValue()
-                let loc = event.location
-                monitor.processMouseMoved(to: loc)
+                // `event.location` is in CoreGraphics global display
+                // space: origin top-left, Y grows downward. AppKit
+                // (NSScreen, NSWindow) uses origin bottom-left, Y up.
+                // Convert here so everything downstream — the shake
+                // location and the drop-window placement — is in AppKit
+                // coordinates. Flipping around the primary screen's
+                // height is the standard conversion.
+                if type == .leftMouseUp {
+                    monitor.handleMouseUp()
+                    return nil
+                }
+                let cg = event.location
+                let primaryHeight = NSScreen.screens.first?.frame.height ?? 0
+                let loc = NSPoint(x: cg.x, y: primaryHeight - cg.y)
+                monitor.processMouseMoved(to: loc, type: type)
             }
             return nil
         }
@@ -188,7 +221,7 @@ final class ShakeMonitor {
         )
 
         isStarted = true
-        NSLog("Shake monitor started; waiting for mouse events")
+        slog("tap CREATED and enabled; mask includes mouseMoved+leftMouseDragged+rightMouseDragged")
         return true
     }
 
@@ -219,15 +252,50 @@ final class ShakeMonitor {
     // MARK: Event processing
 
     private var totalEventCount: Int = 0
+    private var didSeeDrag: Bool = false
     private var lastShakeDebugLogTime: TimeInterval = 0
 
-    private func processMouseMoved(to loc: NSPoint) {
+    /// Whether the left mouse button is currently held. A Finder file
+    /// drag produces `leftMouseDragged` events (button down); plain
+    /// cursor movement produces `mouseMoved` (button up). We only want
+    /// the drop target to appear when the user is actually holding a
+    /// file, so we require this to be true before firing.
+    private var buttonIsDown: Bool = false
+
+    /// Called when the left button is released. Clears drag state and
+    /// re-arms the detector so the next drag+shake is clean, then tells
+    /// the coordinator the drag ended.
+    func handleMouseUp() {
+        buttonIsDown = false
+        reset()
+        slog("leftMouseUp — drag ended; re-armed")
+        onDragEnded?()
+    }
+
+    private func processMouseMoved(to loc: NSPoint, type: CGEventType) {
         let now = CACurrentMediaTime()
         totalEventCount += 1
 
         // One-shot log: confirms the tap is delivering events.
         if totalEventCount == 1 {
-            NSLog("[ShakeDrop] first mouseMoved event received — tap is alive")
+            slog("first mouse event received (type=\(type.rawValue)) — tap is alive")
+        }
+        // Log the FIRST drag event specifically: this is the event
+        // type that fires while the user is holding a file, and the
+        // whole feature depends on it arriving.
+        if type == .leftMouseDragged && !didSeeDrag {
+            didSeeDrag = true
+            slog("first leftMouseDragged received — shake-while-holding can work")
+        }
+
+        // Track button state so we only fire while a file is held.
+        // leftMouseDragged => button down (a drag). mouseMoved =>
+        // button up. rightMouseDragged is not a file drag, so treat
+        // it as "not holding".
+        switch type {
+        case .leftMouseDragged: buttonIsDown = true
+        case .mouseMoved, .rightMouseDragged: buttonIsDown = false
+        default: break
         }
 
         defer {
@@ -294,14 +362,15 @@ final class ShakeMonitor {
         // accumulating without drowning the console.
         if time - lastShakeDebugLogTime > 0.25 {
             lastShakeDebugLogTime = time
-            NSLog("[ShakeDrop] shake strength: flips=\(flips)/\(minReversals) (x=\(xFlips) y=\(yFlips)) travel=\(Int(totalTravel))/\(Int(minTotalTravel)) samples=\(sampleCount)/\(minSamples)")
+            slog("shake strength: flips=\(flips)/\(minReversals) (x=\(xFlips) y=\(yFlips)) travel=\(Int(totalTravel))/\(Int(minTotalTravel)) samples=\(sampleCount)/\(minSamples)")
         }
 
         if flips >= minReversals
             && totalTravel >= minTotalTravel
-            && sampleCount >= minSamples {
+            && sampleCount >= minSamples
+            && buttonIsDown {
             hasFired = true
-            NSLog("[ShakeDrop] shake detected: flips=\(flips) (x=\(xFlips) y=\(yFlips)) travel=\(Int(totalTravel)) samples=\(sampleCount) loc=(\(Int(currentLocation.x)), \(Int(currentLocation.y)))")
+            slog("SHAKE DETECTED: flips=\(flips) (x=\(xFlips) y=\(yFlips)) travel=\(Int(totalTravel)) samples=\(sampleCount) loc=(\(Int(currentLocation.x)), \(Int(currentLocation.y)))")
             onShake?(currentLocation)
             // Reset the sample buffer right after firing so the
             // next shake can be detected cleanly. Otherwise the
