@@ -26,5 +26,10 @@
     <string>Copyright © 2026 ShakeDrop. MIT License.</string>
     <key>NSPrincipalClass</key>
     <string>NSApplication</string>
+    <!-- Run as an "agent" app: no Dock icon, no application
+         menu bar. Status bar item is the only UI when the
+         popover isn't open. -->
+    <key>LSUIElement</key>
+    <true/>
 </dict>
 </plist>
