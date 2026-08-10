@@ -98,7 +98,7 @@ final class AppCoordinator {
     /// calling it multiple times is a no-op after the first.
     @discardableResult
     func bootstrap() -> Bool {
-        NSLog("[ShakeDrop] bootstrap; Input Monitoring authorized = \(ShakeMonitor.isInputMonitoringAuthorized())")
+        slog("==== bootstrap; Input Monitoring authorized = \(ShakeMonitor.isInputMonitoringAuthorized()) ====")
         if didBootstrap { return true }
         didBootstrap = true
         attemptStart()
@@ -110,13 +110,13 @@ final class AppCoordinator {
     /// starts the monitor the moment the user grants access.
     private func attemptStart() {
         if monitor.start() {
-            NSLog("[ShakeDrop] monitor started")
+            slog("monitor started")
             // If we were polling, stop.
             permissionPollTask?.cancel()
             permissionPollTask = nil
             return
         }
-        NSLog("[ShakeDrop] monitor not started; permission likely missing")
+        slog("monitor not started; permission likely missing")
         showPermissionPromptIfNeeded()
         startPermissionPoll()
     }
@@ -154,11 +154,11 @@ final class AppCoordinator {
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
                 guard let self else { return }
-                NSLog("[ShakeDrop] poll: checking Input Monitoring…")
+                slog("poll: checking Input Monitoring…")
                 if ShakeMonitor.isInputMonitoringAuthorized() {
-                    NSLog("[ShakeDrop] poll: permission now granted")
+                    slog("poll: permission now granted")
                     if self.monitor.start() {
-                        NSLog("[ShakeDrop] poll: monitor started")
+                        slog("poll: monitor started")
                         self.permissionPollTask?.cancel()
                         self.permissionPollTask = nil
                         return
@@ -171,11 +171,14 @@ final class AppCoordinator {
     // MARK: Shake / drop handling
 
     private func handleShake(at location: NSPoint) {
-        NSLog("[ShakeDrop] shake at (\(location.x), \(location.y))")
         // Once the drop target is on screen, further shakes must not
         // reposition or re-trigger it — otherwise continuing to move
         // the held file makes the window jump around under the cursor.
-        guard !dropWindow.isPresented else { return }
+        guard !dropWindow.isPresented else {
+            slog("handleShake ignored — drop window already open")
+            return
+        }
+        slog("handleShake -> presenting drop window at (\(Int(location.x)), \(Int(location.y)))")
         dropWindow.present(near: location)
     }
 
@@ -185,14 +188,14 @@ final class AppCoordinator {
     /// run first (it dismisses on its own); this just cleans up the
     /// "released outside the target" case. `dismiss()` is idempotent.
     private func handleDragEnded() {
-        NSLog("[ShakeDrop] drag ended; dismissing drop window if open")
+        slog("handleDragEnded — dismissing drop window if open")
         dropWindow.dismiss()
     }
 
     private func handleFileDropped(_ url: URL) {
-        AirDropSender.send(url: url) { _ in
-            // Best-effort; NSSharingService doesn't expose
-            // success/cancel granularly through this API.
+        slog("handleFileDropped: \(url.lastPathComponent) -> invoking AirDrop")
+        AirDropSender.send(url: url) { ok in
+            slog("AirDrop send returned canPerform=\(ok)")
         }
     }
 }

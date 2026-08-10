@@ -127,7 +127,7 @@ final class ShakeMonitor {
         // Pre-flight: re-check the permission, since it may
         // have changed since the app launched.
         guard Self.isInputMonitoringAuthorized() else {
-            NSLog("Input Monitoring not authorized; tap not installed")
+            slog("Input Monitoring not authorized; tap not installed")
             return false
         }
 
@@ -196,7 +196,7 @@ final class ShakeMonitor {
             callback: callback,
             userInfo: opaqueSelf
         ) else {
-            NSLog("CGEvent.tapCreate returned nil; Input Monitoring may not be granted")
+            slog("CGEvent.tapCreate returned nil; Input Monitoring may not be granted")
             return false
         }
 

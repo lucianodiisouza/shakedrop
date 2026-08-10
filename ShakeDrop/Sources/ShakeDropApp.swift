@@ -15,7 +15,7 @@ import AppKit
 struct ShakeDropApp: App {
 
     init() {
-        NSLog("[ShakeDrop] App.init — bootstrapping coordinator")
+        slog("App.init — bootstrapping coordinator")
         _ = AppCoordinator.shared.bootstrap()
     }
 

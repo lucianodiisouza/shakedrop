@@ -88,6 +88,7 @@ final class DropTargetWindow: NSPanel {
                       display: true)
         self.orderFrontRegardless()
         isPresented = true
+        slog("drop window ordered front at (\(Int(x)), \(Int(y))) size \(Int(Self.size))")
 
         // Auto-dismiss if the user doesn't drop anything.
         // DropTargetWindow is @MainActor; the timer fires on
@@ -185,6 +186,7 @@ private final class DropTargetContentView: NSView {
     required init?(coder: NSCoder) { fatalError() }
 
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        slog("draggingEntered drop window")
         // Highlight the border to acknowledge the drag.
         borderLayer?.strokeColor = NSColor.systemBlue.cgColor
         borderLayer?.lineWidth = 3
@@ -224,6 +226,7 @@ private final class DropTargetContentView: NSView {
         if let urls = pb.readObjects(forClasses: [NSURL.self],
                                      options: options) as? [URL],
            let url = urls.first {
+            slog("performDragOperation: got file url via readObjects: \(url.lastPathComponent)")
             onFileDropped(url)
             return true
         }
@@ -231,10 +234,12 @@ private final class DropTargetContentView: NSView {
         // Fallback for older payloads that only carry raw fileURL bytes.
         if let data = pb.data(forType: .fileURL),
            let url = URL(dataRepresentation: data, relativeTo: nil) {
+            slog("performDragOperation: got file url via fallback: \(url.lastPathComponent)")
             onFileDropped(url)
             return true
         }
 
+        slog("performDragOperation: FAILED to extract a file url; pb types=\(pb.types ?? [])")
         return false
     }
 }
