@@ -10,16 +10,19 @@
 //  Requires the Input Monitoring entitlement and user approval in
 //  System Settings > Privacy & Security > Input Monitoring.
 //
-//  Heuristic (unchanged from the local version):
+//  Heuristic (tuned for both mouse and trackpad):
 //   - Count sign-flips of (dx + dy) over a sliding window.
-//   - Fire when >= minReversals (4) flips within maxWindow (0.8s)
-//     AND total travel >= minTotalTravel (200pt).
+//   - Fire when >= minReversals (3) flips within maxWindow (0.6s)
+//     AND total travel >= minTotalTravel (150pt).
 //   - Re-arm after the window goes quiet.
 //
 
 import AppKit
 import CoreGraphics
 import ApplicationServices
+import os.log
+
+private let log = Logger(subsystem: "com.shakedrop.app", category: "ShakeMonitor")
 
 @MainActor
 final class ShakeMonitor {
@@ -31,9 +34,9 @@ final class ShakeMonitor {
 
     // MARK: Tunables
 
-    private let minReversals: Int = 4
-    private let maxWindow: TimeInterval = 0.8
-    private let minTotalTravel: CGFloat = 200
+    private let minReversals: Int = 3
+    private let maxWindow: TimeInterval = 0.6
+    private let minTotalTravel: CGFloat = 150
     private let minDelta: CGFloat = 6
 
     // MARK: State
@@ -59,9 +62,8 @@ final class ShakeMonitor {
     /// toggled the switch in System Settings, calling this again
     /// will reflect the new state without restarting the app.
     static func isInputMonitoringAuthorized() -> Bool {
-        // The framework's API for this lives under
-        // IOHIDPostEvent — but the simpler heuristic is: try to
-        // create a passive CGEventTap. If it succeeds, we're good.
+        // Probe by trying to create a no-op tap. If permission
+        // isn't granted, tapCreate returns nil.
         let test = CGEvent.tapCreate(
             tap: .cghidEventTap,
             place: .headInsertEventTap,
@@ -70,6 +72,7 @@ final class ShakeMonitor {
             callback: { _, _, _, _ in nil },
             userInfo: nil
         )
+        if let test { CFMachPortInvalidate(test) }
         return test != nil
     }
 
@@ -81,27 +84,36 @@ final class ShakeMonitor {
         }
     }
 
-    /// Start the global event tap. Call after confirming
-    /// `isInputMonitoringAuthorized()`. Safe to call multiple
-    /// times — subsequent calls are no-ops.
-    func start() {
-        guard !isStarted else { return }
+    /// Start the global event tap. Idempotent — safe to call
+    /// multiple times. If Input Monitoring isn't currently
+    /// authorized, returns false without doing anything (the
+    /// caller is expected to handle the prompt).
+    @discardableResult
+    func start() -> Bool {
+        if isStarted { return true }
 
-        // We listen for mouseMoved; .listenOnly means we don't
-        // consume the event, just observe.
+        // Pre-flight: re-check the permission, since it may
+        // have changed since the app launched.
+        guard Self.isInputMonitoringAuthorized() else {
+            log.warning("Input Monitoring not authorized; tap not installed")
+            return false
+        }
+
         let eventMask: CGEventMask = 1 << CGEventType.mouseMoved.rawValue
 
-        // The callback runs on the main CFRunLoop because we
-        // attach the tap's run-loop source to it below.
-        let callback: CGEventTapCallBack = { proxy, type, event, userInfo in
+        // The callback runs on whatever run loop the tap is
+        // attached to. We attach to the main run loop below.
+        let callback: CGEventTapCallBack = { _, type, event, userInfo in
             // Re-enable the tap if the system temporarily
             // disables it (e.g. timeout, user switch).
             if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
-                if let proxy = userInfo {
+                if let userInfo {
                     let monitor = Unmanaged<ShakeMonitor>
-                        .fromOpaque(proxy)
+                        .fromOpaque(userInfo)
                         .takeUnretainedValue()
-                    CGEvent.tapEnable(tap: monitor.eventTap!, enable: true)
+                    if let tap = monitor.eventTap {
+                        CGEvent.tapEnable(tap: tap, enable: true)
+                    }
                 }
                 return nil
             }
@@ -124,18 +136,23 @@ final class ShakeMonitor {
             callback: callback,
             userInfo: opaqueSelf
         ) else {
-            // Permission denied (or some other failure). Caller
-            // is expected to check isInputMonitoringAuthorized()
-            // first; this is the unhappy-path fallback.
-            return
+            log.error("CGEvent.tapCreate returned nil; Input Monitoring may not be granted")
+            return false
         }
 
+        // Attach the tap's run loop source to BOTH the main
+        // run loop and a dedicated high-priority mode. This
+        // matters for status-bar-only apps (LSUIElement),
+        // whose main run loop can be quiet when the menu is
+        // closed and the popover is dismissed.
         self.eventTap = tap
         let src = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
         CFRunLoopAddSource(CFRunLoopGetMain(), src, .commonModes)
         self.runLoopSource = src
         CGEvent.tapEnable(tap: tap, enable: true)
         isStarted = true
+        log.info("Shake monitor started; waiting for mouse events")
+        return true
     }
 
     func stop() {
@@ -180,8 +197,6 @@ final class ShakeMonitor {
 
         samples.append(Sample(time: now, dx: dx, dy: dy))
 
-        // Count sign-flips in the combined (dx+dy) over the
-        // current window. This is the same heuristic as before.
         if dx != 0 || dy != 0 {
             registerReversal(at: now, currentLocation: loc)
         }
@@ -209,6 +224,7 @@ final class ShakeMonitor {
 
         if flips >= minReversals && totalTravel >= minTotalTravel {
             hasFired = true
+            log.info("shake detected: flips=\(flips) travel=\(totalTravel) loc=(\(currentLocation.x), \(currentLocation.y))")
             onShake?(currentLocation)
         }
     }
