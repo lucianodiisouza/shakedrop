@@ -215,13 +215,26 @@ private final class DropTargetContentView: NSView {
 
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
         let pb = sender.draggingPasteboard
-        guard let types = pb.types,
-              types.contains(.fileURL),
-              let data = pb.data(forType: .fileURL),
-              let url = URL(dataRepresentation: data, relativeTo: nil)
-        else { return false }
 
-        onFileDropped(url)
-        return true
+        // Canonical way to pull file URLs off a drag pasteboard.
+        // Restricting to file URLs avoids grabbing plain-text/web URLs.
+        let options: [NSPasteboard.ReadingOptionKey: Any] = [
+            .urlReadingFileURLsOnly: true
+        ]
+        if let urls = pb.readObjects(forClasses: [NSURL.self],
+                                     options: options) as? [URL],
+           let url = urls.first {
+            onFileDropped(url)
+            return true
+        }
+
+        // Fallback for older payloads that only carry raw fileURL bytes.
+        if let data = pb.data(forType: .fileURL),
+           let url = URL(dataRepresentation: data, relativeTo: nil) {
+            onFileDropped(url)
+            return true
+        }
+
+        return false
     }
 }
