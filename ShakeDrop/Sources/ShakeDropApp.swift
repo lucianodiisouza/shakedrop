@@ -2,36 +2,48 @@
 //  ShakeDropApp.swift
 //  ShakeDrop
 //
-//  Menu-bar-only app. The drop-zone UI lives inside a popover
-//  attached to the status bar item; there is no dock icon, no
-//  main window. The status bar icon is the SF Symbol `hand.draw`
-//  (closed hand with extended index finger inside a circle).
+//  Menu-bar-only app. The drop UI is a small floating window
+//  that appears near the cursor when the user shakes the mouse
+//  while holding a file (system-wide).
+//
+//  The status bar icon is the SF Symbol `hand.draw`.
 //
 
 import SwiftUI
 
 @main
 struct ShakeDropApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+
     var body: some Scene {
         MenuBarExtra {
-            ContentView()
-                .frame(width: 360, height: 280)
-
+            // Clicking the status bar icon is the trigger for
+            // requesting Input Monitoring permission. The actual
+            // shake detection runs in the background after the
+            // permission has been granted.
+            Button("Open ShakeDrop") {
+                appDelegate.coordinator.menuBarClicked()
+            }
             Divider()
-
             Button("About ShakeDrop") {
                 NSApplication.shared.orderFrontStandardAboutPanel(nil)
             }
-
             Button("Quit ShakeDrop") {
                 NSApplication.shared.terminate(nil)
             }
             .keyboardShortcut("q")
         } label: {
-            // SF Symbol: hand.draw — closed hand with index finger
-            // extended, inside a circle. Requires macOS 13+.
             Image(systemName: "hand.draw")
         }
-        .menuBarExtraStyle(.window)
+        .menuBarExtraStyle(.menu)
+    }
+}
+
+@MainActor
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    let coordinator = AppCoordinator()
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        coordinator.applicationDidFinishLaunching()
     }
 }
