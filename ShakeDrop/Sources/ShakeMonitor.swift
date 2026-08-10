@@ -164,7 +164,7 @@ final class ShakeMonitor {
         // parks LSUIElement agents and the tap callback
         // never fires.
         self.activityToken = ProcessInfo.processInfo.beginActivity(
-            withOptions: [.latencyCritical],
+            options: [.latencyCritical],
             reason: "ShakeDrop needs to detect global mouse shakes in real time"
         )
 
