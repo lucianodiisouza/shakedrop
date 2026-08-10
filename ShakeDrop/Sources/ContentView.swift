@@ -2,16 +2,17 @@
 //  ContentView.swift
 //  ShakeDrop
 //
-//  Hosts the drop zone + status text.
+//  Hosts the drop zone + status text. Sized for a menu-bar
+//  popover (compact), not a regular window.
 //
 
 import SwiftUI
 
 struct ContentView: View {
-    @State private var status: String = "Drag a file in, then shake your mouse to AirDrop it."
+    @State private var status: String = "Drop a file, then shake to AirDrop."
 
     var body: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 12) {
             DropZoneView(onShake: { url in
                 status = "Shake detected — opening AirDrop for \(url.lastPathComponent)…"
                 AirDropSender.send(url: url) { success in
@@ -20,14 +21,14 @@ struct ContentView: View {
                         : "AirDrop was cancelled or failed."
                 }
             })
-            .padding(20)
 
             Text(status)
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
-                .padding(.horizontal, 20)
+                .lineLimit(2)
+                .padding(.horizontal, 12)
         }
-        .padding(20)
+        .padding(12)
     }
 }
