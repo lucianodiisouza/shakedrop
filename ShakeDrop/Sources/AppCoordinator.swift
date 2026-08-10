@@ -83,6 +83,9 @@ final class AppCoordinator {
         monitor.onShake = { [weak self] location in
             self?.handleShake(at: location)
         }
+        monitor.onDragEnded = { [weak self] in
+            self?.handleDragEnded()
+        }
         dropWindow.onFileDropped = { [weak self] url in
             self?.handleFileDropped(url)
         }
@@ -172,8 +175,17 @@ final class AppCoordinator {
         dropWindow.present(near: location)
     }
 
+    /// The drag session ended (mouse released). Dismiss the drop
+    /// window so a stale target doesn't linger for the next file. A
+    /// short delay lets an on-target drop's `performDragOperation`
+    /// run first (it dismisses on its own); this just cleans up the
+    /// "released outside the target" case. `dismiss()` is idempotent.
+    private func handleDragEnded() {
+        NSLog("[ShakeDrop] drag ended; dismissing drop window if open")
+        dropWindow.dismiss()
+    }
+
     private func handleFileDropped(_ url: URL) {
-        NSLog("[ShakeDrop] file dropped: \(url.lastPathComponent)")
         AirDropSender.send(url: url) { _ in
             // Best-effort; NSSharingService doesn't expose
             // success/cancel granularly through this API.
