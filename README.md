@@ -74,6 +74,21 @@ xattr -dr com.apple.quarantine /path/to/ShakeDrop.app
 Or right-click the app in Finder → **Open** → **Open** in the dialog.
 One-time approval per machine.
 
+## Uninstalling
+
+To completely remove ShakeDrop from your Mac — the `.app`, leftover release
+zips, LaunchServices registration, per-user preferences and caches, and the
+Input Monitoring / Accessibility TCC entries — run:
+
+```sh
+./uninstall.sh
+```
+
+From the repo root. Safe to re-run. Refuses to run as root so it can't trash
+system databases by accident. If macOS denies the script's write to TCC.db
+(it requires Full Disk Access for non-Apple processes), the script prints
+the exact System Settings path you need to toggle off manually.
+
 ## Releasing
 
 Push a `vX.Y.Z` tag to trigger the GitHub Actions release workflow
