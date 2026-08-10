@@ -18,7 +18,7 @@ No third-party dependencies. macOS 13+.
 4. Drop the file on it. The AirDrop share sheet opens with that file
    selected.
 
-If you don't drop anything within 8 seconds, the window dismisses itself.
+If you don't drop anything within 4 seconds, the window dismisses itself.
 
 ## Permissions
 

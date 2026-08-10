@@ -26,7 +26,7 @@ import UniformTypeIdentifiers
 final class DropTargetWindow: NSPanel {
 
     static let size: CGFloat = 240
-    static let dismissAfter: TimeInterval = 8.0
+    static let dismissAfter: TimeInterval = 4.0
 
     private var dismissTimer: Timer?
     var onFileDropped: ((URL) -> Void)?
