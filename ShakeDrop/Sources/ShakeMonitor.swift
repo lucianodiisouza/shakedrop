@@ -20,6 +20,7 @@
 import AppKit
 import CoreGraphics
 import ApplicationServices
+import Foundation
 
 // NSLog so messages show in Console.app without any filter.
 
@@ -53,6 +54,14 @@ final class ShakeMonitor {
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
     private(set) var isStarted = false
+
+    /// Activity token from `NSProcessInfo.beginActivity(...)`.
+    /// Declares this process as "doing latency-critical work"
+    /// (the shake detector) so App Nap won't put us to sleep.
+    /// Without this, an LSUIElement agent with no visible
+    /// window gets parked and the CGEventTap callback never
+    /// fires even though the tap is installed.
+    private var activityToken: NSObjectProtocol?
 
     // MARK: Lifecycle
 
@@ -139,16 +148,26 @@ final class ShakeMonitor {
             return false
         }
 
-        // Attach the tap's run loop source to BOTH the main
-        // run loop and a dedicated high-priority mode. This
-        // matters for status-bar-only apps (LSUIElement),
-        // whose main run loop can be quiet when the menu is
-        // closed and the popover is dismissed.
+        // Attach the tap's run loop source to the main run
+        // loop. Status-bar-only apps (LSUIElement) can have
+        // a quiet main run loop; the activity token below
+        // keeps the process awake so the source keeps
+        // firing.
         self.eventTap = tap
         let src = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
         CFRunLoopAddSource(CFRunLoopGetMain(), src, .commonModes)
         self.runLoopSource = src
         CGEvent.tapEnable(tap: tap, enable: true)
+
+        // Anti-App-Nap: declare this process as doing
+        // latency-critical work. Without this, the system
+        // parks LSUIElement agents and the tap callback
+        // never fires.
+        self.activityToken = ProcessInfo.processInfo.beginActivity(
+            withOptions: [.latencyCritical],
+            reason: "ShakeDrop needs to detect global mouse shakes in real time"
+        )
+
         isStarted = true
         NSLog("Shake monitor started; waiting for mouse events")
         return true
@@ -161,6 +180,10 @@ final class ShakeMonitor {
         }
         if let src = runLoopSource {
             CFRunLoopRemoveSource(CFRunLoopGetMain(), src, .commonModes)
+        }
+        if let token = activityToken {
+            ProcessInfo.processInfo.endActivity(token)
+            activityToken = nil
         }
         eventTap = nil
         runLoopSource = nil
@@ -176,8 +199,17 @@ final class ShakeMonitor {
 
     // MARK: Event processing
 
+    private var totalEventCount: Int = 0
+    private var lastShakeDebugLogTime: TimeInterval = 0
+
     private func processMouseMoved(to loc: NSPoint) {
         let now = CACurrentMediaTime()
+        totalEventCount += 1
+
+        // One-shot log: confirms the tap is delivering events.
+        if totalEventCount == 1 {
+            NSLog("[ShakeDrop] first mouseMoved event received — tap is alive")
+        }
 
         defer {
             if lastPosition == nil { lastPosition = loc }
@@ -221,9 +253,17 @@ final class ShakeMonitor {
             prevCombined = sign
         }
 
+        // Throttled debug: at most once per 250ms while the
+        // user is actively shaking, so we can see the "force"
+        // accumulating without drowning the console.
+        if time - lastShakeDebugLogTime > 0.25 {
+            lastShakeDebugLogTime = time
+            NSLog("[ShakeDrop] shake strength: flips=\(flips)/\(minReversals) travel=\(Int(totalTravel))/\(Int(minTotalTravel))")
+        }
+
         if flips >= minReversals && totalTravel >= minTotalTravel {
             hasFired = true
-            NSLog("shake detected: flips=\(flips) travel=\(totalTravel) loc=(\(currentLocation.x), \(currentLocation.y))")
+            NSLog("[ShakeDrop] shake detected: flips=\(flips) travel=\(totalTravel) loc=(\(currentLocation.x), \(currentLocation.y))")
             onShake?(currentLocation)
         }
     }
