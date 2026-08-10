@@ -172,6 +172,10 @@ final class AppCoordinator {
 
     private func handleShake(at location: NSPoint) {
         NSLog("[ShakeDrop] shake at (\(location.x), \(location.y))")
+        // Once the drop target is on screen, further shakes must not
+        // reposition or re-trigger it — otherwise continuing to move
+        // the held file makes the window jump around under the cursor.
+        guard !dropWindow.isPresented else { return }
         dropWindow.present(near: location)
     }
 

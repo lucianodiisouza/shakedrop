@@ -31,6 +31,11 @@ final class DropTargetWindow: NSPanel {
     private var dismissTimer: Timer?
     var onFileDropped: ((URL) -> Void)?
 
+    /// True while the drop target is on screen. Used to ignore
+    /// further shakes so the window doesn't jump around while the
+    /// user is still moving the held file.
+    private(set) var isPresented = false
+
     // MARK: Init
 
     init() {
@@ -82,6 +87,7 @@ final class DropTargetWindow: NSPanel {
         self.setFrame(NSRect(x: x, y: y, width: Self.size, height: Self.size),
                       display: true)
         self.orderFrontRegardless()
+        isPresented = true
 
         // Auto-dismiss if the user doesn't drop anything.
         // DropTargetWindow is @MainActor; the timer fires on
@@ -103,6 +109,7 @@ final class DropTargetWindow: NSPanel {
     func dismiss() {
         dismissTimer?.invalidate()
         dismissTimer = nil
+        isPresented = false
         self.orderOut(nil)
     }
 }
