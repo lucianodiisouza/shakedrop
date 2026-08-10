@@ -34,10 +34,29 @@ final class ShakeMonitor {
 
     // MARK: Tunables
 
-    private let minReversals: Int = 3
+    /// Minimum number of direction reversals (in X **or** Y —
+    /// the two axes are counted independently and summed) within
+    /// the window. A real shake has many short back-and-forth
+    /// wiggles; a normal mouse move has zero reversals.
+    private let minReversals: Int = 4
+
+    /// Time window over which reversals and travel accumulate.
     private let maxWindow: TimeInterval = 0.6
-    private let minTotalTravel: CGFloat = 150
+
+    /// Minimum total path length (sum of |dxi| + |dyi|) within
+    /// the window. Filters out tiny micro-tremors.
+    private let minTotalTravel: CGFloat = 200
+
+    /// Minimum absolute delta to count as a real sample
+    /// (filters sub-pixel jitter).
     private let minDelta: CGFloat = 6
+
+    /// Minimum number of *distinct* samples in the window.
+    /// A shake produces many small samples; a single flick
+    /// produces one or two big ones. Requiring at least this
+    /// many samples rules out the "user moved the mouse a
+    /// lot in one direction" false positive.
+    private let minSamples: Int = 6
 
     // MARK: State
 
@@ -241,30 +260,55 @@ final class ShakeMonitor {
         let relevant = samples.filter { $0.time >= windowStart }
         let totalTravel = relevant.reduce(CGFloat(0)) { $0 + hypot($1.dx, $1.dy) }
 
-        var flips = 0
-        var prevCombined: CGFloat = 0
+        // Count direction reversals in X and Y **independently**
+        // and sum them. The old code combined dx+dy into a single
+        // signal, which missed shakes that move predominantly
+        // along one axis (e.g. shaking left/right with very
+        // little vertical motion) and could stay positive when
+        // the user moved in a slow arc.
+        var xFlips = 0
+        var yFlips = 0
+        var prevSignX: CGFloat = 0
+        var prevSignY: CGFloat = 0
         for s in relevant {
-            let combined = s.dx + s.dy
-            if combined == 0 { continue }
-            let sign: CGFloat = combined > 0 ? 1 : -1
-            if prevCombined != 0 && sign != prevCombined {
-                flips += 1
+            if s.dx != 0 {
+                let sign: CGFloat = s.dx > 0 ? 1 : -1
+                if prevSignX != 0 && sign != prevSignX {
+                    xFlips += 1
+                }
+                prevSignX = sign
             }
-            prevCombined = sign
+            if s.dy != 0 {
+                let sign: CGFloat = s.dy > 0 ? 1 : -1
+                if prevSignY != 0 && sign != prevSignY {
+                    yFlips += 1
+                }
+                prevSignY = sign
+            }
         }
+        let flips = xFlips + yFlips
+        let sampleCount = relevant.count
 
         // Throttled debug: at most once per 250ms while the
         // user is actively shaking, so we can see the "force"
         // accumulating without drowning the console.
         if time - lastShakeDebugLogTime > 0.25 {
             lastShakeDebugLogTime = time
-            NSLog("[ShakeDrop] shake strength: flips=\(flips)/\(minReversals) travel=\(Int(totalTravel))/\(Int(minTotalTravel))")
+            NSLog("[ShakeDrop] shake strength: flips=\(flips)/\(minReversals) (x=\(xFlips) y=\(yFlips)) travel=\(Int(totalTravel))/\(Int(minTotalTravel)) samples=\(sampleCount)/\(minSamples)")
         }
 
-        if flips >= minReversals && totalTravel >= minTotalTravel {
+        if flips >= minReversals
+            && totalTravel >= minTotalTravel
+            && sampleCount >= minSamples {
             hasFired = true
-            NSLog("[ShakeDrop] shake detected: flips=\(flips) travel=\(totalTravel) loc=(\(currentLocation.x), \(currentLocation.y))")
+            NSLog("[ShakeDrop] shake detected: flips=\(flips) (x=\(xFlips) y=\(yFlips)) travel=\(Int(totalTravel)) samples=\(sampleCount) loc=(\(Int(currentLocation.x)), \(Int(currentLocation.y)))")
             onShake?(currentLocation)
+            // Reset the sample buffer right after firing so the
+            // next shake can be detected cleanly. Otherwise the
+            // post-shake decay would keep flips and travel high
+            // and the detector would refuse to re-arm.
+            samples.removeAll(keepingCapacity: true)
+            lastPosition = nil
         }
     }
 
